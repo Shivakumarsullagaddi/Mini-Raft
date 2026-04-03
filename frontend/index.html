@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MiniRAFT — Distributed Drawing Board</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:'Inter',sans-serif;background:#0d0d14;color:#e2e8f0;height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+    header{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:rgba(255,255,255,0.04);border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;}
+    .logo{font-size:16px;font-weight:700;background:linear-gradient(135deg,#7c3aed,#3b82f6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+    .status-bar{display:flex;gap:8px;align-items:center;font-size:11px;}
+    .pill{display:flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);}
+    .dot{width:7px;height:7px;border-radius:50%;background:#6b7280;transition:background .3s;}
+    .dot.ok{background:#10b981;box-shadow:0 0 5px #10b981;}
+    .dot.leader{background:#f59e0b;box-shadow:0 0 5px #f59e0b;}
+    .toolbar{display:flex;align-items:center;gap:8px;padding:6px 16px;background:rgba(255,255,255,0.02);border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0;flex-wrap:wrap;}
+    .lbl{font-size:11px;color:#6b7280;}
+    input[type=color]{width:28px;height:28px;border:none;border-radius:6px;cursor:pointer;background:none;padding:0;}
+    input[type=range]{width:80px;accent-color:#7c3aed;}
+    .btn{padding:4px 12px;border-radius:7px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:#e2e8f0;font-size:11px;cursor:pointer;transition:all .2s;}
+    .btn:hover{background:rgba(255,255,255,0.14);}
+    .btn.active{background:rgba(239,68,68,0.3);border-color:#ef4444;}
+    .btn.undo{border-color:rgba(99,102,241,.4);}
+    .btn.redo{border-color:rgba(99,102,241,.4);}
+    .btn.dashboard-toggle{border-color:rgba(59,130,246,.4);background:rgba(59,130,246,.1);}
+    .workspace{display:flex;flex:1;overflow:hidden;}
+    .canvas-area{position:relative;flex:1;}
+    #canvas{display:block;width:100%;height:100%;cursor:crosshair;}
+    #log-panel{position:absolute;bottom:10px;right:10px;width:260px;max-height:140px;overflow-y:auto;background:rgba(13,13,20,.88);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:8px;font-size:10px;font-family:'Courier New',monospace;}
+    .le{padding:2px 0;color:#94a3b8;border-bottom:1px solid rgba(255,255,255,.04);}
+    .le.ok{color:#10b981;} .le.warn{color:#f59e0b;} .le.err{color:#ef4444;} .le.info{color:#60a5fa;}
+    /* Dashboard */
+    #dashboard{width:300px;background:rgba(255,255,255,.025);border-left:1px solid rgba(255,255,255,.07);overflow-y:auto;padding:12px;display:none;flex-direction:column;gap:10px;}
+    #dashboard.open{display:flex;}
+    .dash-title{font-size:13px;font-weight:600;color:#94a3b8;border-bottom:1px solid rgba(255,255,255,.06);padding-bottom:6px;}
+    .replica-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:6px;}
+    .replica-card.leader-card{border-color:#f59e0b;background:rgba(245,158,11,.05);}
+    .replica-card.offline-card{opacity:.5;}
+    .replica-card.partitioned-card{border-color:#ef4444;background:rgba(239,68,68,.05);}
+    .rep-header{display:flex;justify-content:space-between;align-items:center;}
+    .rep-name{font-size:12px;font-weight:600;}
+    .state-badge{font-size:9px;padding:2px 7px;border-radius:999px;font-weight:600;}
+    .state-badge.LEADER{background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b44;}
+    .state-badge.FOLLOWER{background:#3b82f622;color:#3b82f6;border:1px solid #3b82f644;}
+    .state-badge.CANDIDATE{background:#f9731622;color:#f97316;border:1px solid #f9731644;}
+    .state-badge.OFFLINE{background:#ef444422;color:#ef4444;border:1px solid #ef444444;}
+    .rep-stats{display:flex;gap:8px;font-size:10px;color:#64748b;}
+    .rep-bar{height:3px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden;}
+    .rep-bar-fill{height:100%;background:linear-gradient(90deg,#7c3aed,#3b82f6);border-radius:3px;transition:width .5s;}
+    .rep-actions{display:flex;gap:5px;}
+    .rep-btn{flex:1;padding:3px 6px;font-size:10px;border-radius:5px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:#e2e8f0;cursor:pointer;transition:all .2s;}
+    .rep-btn.partition{border-color:rgba(239,68,68,.4);color:#fca5a5;}
+    .rep-btn.partition:hover{background:rgba(239,68,68,.2);}
+    .rep-btn.heal{border-color:rgba(16,185,129,.4);color:#6ee7b7;}
+    .rep-btn.heal:hover{background:rgba(16,185,129,.2);}
+    .partition-warning{font-size:9px;color:#f87171;display:flex;align-items:center;gap:4px;}
+    .summary-box{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:8px;font-size:10px;}
+    .summary-row{display:flex;justify-content:space-between;padding:2px 0;color:#64748b;}
+    .summary-row span:last-child{color:#e2e8f0;}
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo">⬡ MiniRAFT Drawing Board</div>
+  <div class="status-bar">
+    <div class="pill"><div class="dot" id="ws-dot"></div><span id="ws-status">Connecting...</span></div>
+    <div class="pill"><div class="dot leader"></div><span id="leader-status">Leader: --</span></div>
+    <div class="pill"><span id="term-status">Term: --</span></div>
+    <div class="pill"><span id="clients-status">Clients: --</span></div>
+  </div>
+</header>
+
+<div class="toolbar">
+  <span class="lbl">Color</span>
+  <input type="color" id="color-picker" value="#7c3aed"/>
+  <span class="lbl">Size</span>
+  <input type="range" id="brush-size" min="1" max="40" value="4"/>
+  <span id="size-val">4px</span>
+  <button class="btn" id="eraser-btn">Eraser</button>
+  <button class="btn undo" id="undo-btn" title="Ctrl+Z">↩ Undo</button>
+  <button class="btn redo" id="redo-btn" title="Ctrl+Y">↪ Redo</button>
+  <button class="btn" id="clear-btn">🗑 Clear All</button>
+  <button class="btn dashboard-toggle" id="dash-toggle">📊 Dashboard</button>
+</div>
+
+<div class="workspace">
+  <div class="canvas-area">
+    <canvas id="canvas"></canvas>
+    <div id="log-panel"></div>
+  </div>
+  <div id="dashboard">
+    <div class="dash-title">🗳 RAFT Cluster Dashboard</div>
+    <div class="summary-box" id="cluster-summary">
+      <div class="summary-row"><span>Leader</span><span id="s-leader">--</span></div>
+      <div class="summary-row"><span>Term</span><span id="s-term">--</span></div>
+      <div class="summary-row"><span>Connected Clients</span><span id="s-clients">--</span></div>
+    </div>
+    <div id="replica-cards"></div>
+    <div class="dash-title" style="margin-top:6px">⚡ Split-Brain Simulation</div>
+    <div style="font-size:10px;color:#64748b;line-height:1.5">
+      Partition ≥2 replicas to simulate split-brain. With 4 nodes, majority = 3. Partitioning 2 nodes prevents new elections on that side.
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const colorPicker = document.getElementById('color-picker');
+const brushSize = document.getElementById('brush-size');
+const sizeVal = document.getElementById('size-val');
+const eraserBtn = document.getElementById('eraser-btn');
+const undoBtn = document.getElementById('undo-btn');
+const redoBtn = document.getElementById('redo-btn');
+const clearBtn = document.getElementById('clear-btn');
+const dashToggle = document.getElementById('dash-toggle');
+const dashboard = document.getElementById('dashboard');
+const logPanel = document.getElementById('log-panel');
+const wsDot = document.getElementById('ws-dot');
+const wsStatus = document.getElementById('ws-status');
+
+function resizeCanvas() {
+  const wrapper = canvas.parentElement;
+  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  canvas.width = wrapper.clientWidth;
+  canvas.height = wrapper.clientHeight;
+  ctx.putImageData(imgData, 0, 0);
+}
+resizeCanvas();
+window.addEventListener('resize', () => { resizeCanvas(); redrawAll(); });
+
+// ── Drawing State ──
+let isDrawing = false;
+let isEraser = false;
+let lastX = 0, lastY = 0;
+let currentStroke = null;
+
+// ── Log-based Undo/Redo ──
+let drawLog = [];
+let undoneSet = new Set();
+let myUndoStack = [];
+let myRedoStack = [];
+
+function genId() { return Date.now() + '-' + Math.random().toString(36).substr(2, 9); }
+
+brushSize.addEventListener('input', () => { sizeVal.textContent = brushSize.value + 'px'; });
+
+eraserBtn.addEventListener('click', () => {
+  isEraser = !isEraser;
+  eraserBtn.classList.toggle('active', isEraser);
+  eraserBtn.textContent = isEraser ? '✖ Eraser ON' : 'Eraser';
+});
+
+dashToggle.addEventListener('click', () => {
+  dashboard.classList.toggle('open');
+});
+
+clearBtn.addEventListener('click', () => {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'clear' }));
+  }
+});
+
+undoBtn.addEventListener('click', doUndo);
+redoBtn.addEventListener('click', doRedo);
+
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.key === 'z') { e.preventDefault(); doUndo(); }
+  if (e.ctrlKey && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) { e.preventDefault(); doRedo(); }
+});
+
+function doUndo() {
+  if (!myUndoStack.length) return;
+  const targetId = myUndoStack.pop();
+  myRedoStack.push(targetId);
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'undo', targetId }));
+  }
+  addLog('↩ Undo sent', 'info');
+}
+
+function doRedo() {
+  if (!myRedoStack.length) return;
+  const targetId = myRedoStack.pop();
+  myUndoStack.push(targetId);
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'redo', targetId }));
+  }
+  addLog('↪ Redo sent', 'info');
+}
+
+function getPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const cx = e.touches ? e.touches[0].clientX : e.clientX;
+  const cy = e.touches ? e.touches[0].clientY : e.clientY;
+  return [cx - rect.left, cy - rect.top];
+}
+
+canvas.addEventListener('mousedown', (e) => {
+  isDrawing = true;
+  [lastX, lastY] = getPos(e);
+  const id = genId();
+  currentStroke = {
+    type: 'stroke', id,
+    isEraser, color: colorPicker.value,
+    size: parseInt(brushSize.value),
+    points: [[lastX, lastY]]
+  };
+  drawPoint(lastX, lastY, currentStroke);
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  if (!isDrawing || !currentStroke) return;
+  const [x, y] = getPos(e);
+  drawSegment(lastX, lastY, x, y, currentStroke);
+  currentStroke.points.push([x, y]);
+  lastX = x; lastY = y;
+});
+
+canvas.addEventListener('mouseup', () => {
+  if (!isDrawing || !currentStroke) return;
+  isDrawing = false;
+  if (currentStroke.points.length >= 1 && ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(currentStroke));
+    myUndoStack.push(currentStroke.id);
+    myRedoStack = [];
+  }
+  currentStroke = null;
+});
+
+canvas.addEventListener('mouseleave', () => { isDrawing = false; });
+
+function drawSegment(x1, y1, x2, y2, stroke) {
+  ctx.save();
+  applyStrokeStyle(stroke);
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawPoint(x, y, stroke) {
+  ctx.save();
+  applyStrokeStyle(stroke);
+  ctx.beginPath();
+  ctx.arc(x, y, stroke.size / 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function applyStrokeStyle(stroke) {
+  ctx.lineWidth = stroke.size;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  if (stroke.isEraser) {
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.strokeStyle = 'rgba(0,0,0,1)';
+    ctx.fillStyle = 'rgba(0,0,0,1)';
+  } else {
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.strokeStyle = stroke.color;
+    ctx.fillStyle = stroke.color;
+  }
+}
+
+function renderStroke(stroke) {
+  if (!stroke.points || stroke.points.length === 0) return;
+  ctx.save();
+  applyStrokeStyle(stroke);
+  ctx.beginPath();
+  ctx.moveTo(stroke.points[0][0], stroke.points[0][1]);
+  if (stroke.points.length === 1) {
+    ctx.arc(stroke.points[0][0], stroke.points[0][1], stroke.size / 2, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    for (let i = 1; i < stroke.points.length; i++) {
+      ctx.lineTo(stroke.points[i][0], stroke.points[i][1]);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function redrawAll() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  for (const entry of drawLog) {
+    if (entry.type === 'clear') {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    } else if (entry.type === 'stroke' && !undoneSet.has(entry.id)) {
+      renderStroke(entry);
+    }
+  }
+}
+
+function applyEvent(event) {
+  if (event.type === 'stroke') {
+    drawLog.push(event);
+    if (!undoneSet.has(event.id)) renderStroke(event);
+    addLog(`✅ Stroke committed`, 'ok');
+  } else if (event.type === 'undo') {
+    drawLog.push(event);
+    undoneSet.add(event.targetId);
+    redrawAll();
+    addLog(`↩ Undo applied`, 'info');
+  } else if (event.type === 'redo') {
+    drawLog.push(event);
+    undoneSet.delete(event.targetId);
+    redrawAll();
+    addLog(`↪ Redo applied`, 'info');
+  } else if (event.type === 'clear') {
+    drawLog = [];
+    undoneSet.clear();
+    myUndoStack = [];
+    myRedoStack = [];
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    addLog('🗑 Canvas cleared', 'warn');
+  }
+}
+
+function addLog(msg, type = '') {
+  const el = document.createElement('div');
+  el.className = `le ${type}`;
+  el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  logPanel.prepend(el);
+  while (logPanel.children.length > 40) logPanel.lastChild.remove();
+}
+
+// ── WebSocket ──
+let ws, reconnectDelay = 1000;
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}`);
+
+  ws.onopen = () => {
+    wsDot.className = 'dot ok';
+    wsStatus.textContent = 'Connected';
+    reconnectDelay = 1000;
+    addLog('Connected to Gateway', 'ok');
+  };
+
+  ws.onmessage = ({ data }) => {
+    let event;
+    try { event = JSON.parse(data); } catch { return; }
+    if (['stroke', 'undo', 'redo', 'clear'].includes(event.type)) {
+      applyEvent(event);
+    } else if (event.type === 'connected') {
+      addLog(event.message, 'info');
+    }
+  };
+
+  ws.onclose = () => {
+    wsDot.className = 'dot';
+    wsStatus.textContent = 'Disconnected';
+    addLog('Disconnected — reconnecting...', 'err');
+    setTimeout(connect, reconnectDelay);
+    reconnectDelay = Math.min(reconnectDelay * 1.5, 8000);
+  };
+
+  ws.onerror = () => ws.close();
+}
+
+connect();
+
+// ── Dashboard Polling ──
+async function pollStatus() {
+  try {
+    const res = await fetch('/gateway-status');
+    const data = await res.json();
+
+    document.getElementById('leader-status').textContent =
+      `Leader: ${data.leaderUrl ? data.leaderUrl.split('//')[1].split(':')[0] : '--'}`;
+    document.getElementById('term-status').textContent = `Term: ${data.term ?? '--'}`;
+    document.getElementById('clients-status').textContent = `Clients: ${data.clients}`;
+
+    document.getElementById('s-leader').textContent =
+      data.leaderUrl ? data.leaderUrl.split('//')[1].split(':')[0] : '--';
+    document.getElementById('s-term').textContent = data.term ?? '--';
+    document.getElementById('s-clients').textContent = data.clients;
+
+    if (data.replicas) renderReplicaCards(data.replicas);
+  } catch {}
+}
+
+function renderReplicaCards(replicas) {
+  const container = document.getElementById('replica-cards');
+  container.innerHTML = '';
+  const maxLog = Math.max(...replicas.map(r => r.logLength || 0), 1);
+
+  replicas.forEach(r => {
+    const isOffline = r.state === 'OFFLINE';
+    const isPartitioned = r.partitioned;
+    const card = document.createElement('div');
+    card.className = `replica-card${r.state === 'LEADER' ? ' leader-card' : ''}${isOffline ? ' offline-card' : ''}${isPartitioned ? ' partitioned-card' : ''}`;
+
+    card.innerHTML = `
+      <div class="rep-header">
+        <span class="rep-name">${r.id}</span>
+        <span class="state-badge ${r.state}">${r.state}</span>
+      </div>
+      <div class="rep-stats">
+        <span>Term: ${r.term}</span>
+        <span>Log: ${r.logLength}</span>
+        <span>Commit: ${r.commitIndex}</span>
+      </div>
+      <div class="rep-bar"><div class="rep-bar-fill" style="width:${Math.round((r.logLength / maxLog) * 100)}%"></div></div>
+      ${isPartitioned ? '<div class="partition-warning">⚡ Partitioned from cluster</div>' : ''}
+      <div class="rep-actions">
+        <button class="rep-btn partition" onclick="partitionReplica('${r.id}')">⚡ Partition</button>
+        <button class="rep-btn heal" onclick="healReplica('${r.id}')">✅ Heal</button>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+async function partitionReplica(id) {
+  try {
+    await fetch(`/partition/${id}`, { method: 'POST' });
+    addLog(`⚡ ${id} partitioned`, 'warn');
+  } catch {}
+}
+
+async function healReplica(id) {
+  try {
+    await fetch(`/heal/${id}`, { method: 'POST' });
+    addLog(`✅ ${id} healed`, 'ok');
+  } catch {}
+}
+
+setInterval(pollStatus, 1500);
+pollStatus();
+</script>
+</body>
+</html>

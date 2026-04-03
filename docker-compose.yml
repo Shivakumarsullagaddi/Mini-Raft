@@ -1,0 +1,81 @@
+
+networks:
+  raft-net:
+    driver: bridge
+
+services:
+
+  replica1:
+    build: ./replica1
+    container_name: replica1
+    networks: [raft-net]
+    ports: ["4001:4001"]
+    environment:
+      - REPLICA_ID=replica1
+      - PORT=4001
+      - PEERS=http://replica2:4002,http://replica3:4003,http://replica4:4004
+      - GATEWAY_URL=http://gateway:3000
+    volumes:
+      - ./replica1:/app
+      - /app/node_modules
+    restart: unless-stopped
+
+  replica2:
+    build: ./replica2
+    container_name: replica2
+    networks: [raft-net]
+    ports: ["4002:4002"]
+    environment:
+      - REPLICA_ID=replica2
+      - PORT=4002
+      - PEERS=http://replica1:4001,http://replica3:4003,http://replica4:4004
+      - GATEWAY_URL=http://gateway:3000
+    volumes:
+      - ./replica2:/app
+      - /app/node_modules
+    restart: unless-stopped
+
+  replica3:
+    build: ./replica3
+    container_name: replica3
+    networks: [raft-net]
+    ports: ["4003:4003"]
+    environment:
+      - REPLICA_ID=replica3
+      - PORT=4003
+      - PEERS=http://replica1:4001,http://replica2:4002,http://replica4:4004
+      - GATEWAY_URL=http://gateway:3000
+    volumes:
+      - ./replica3:/app
+      - /app/node_modules
+    restart: unless-stopped
+
+  replica4:
+    build: ./replica4
+    container_name: replica4
+    networks: [raft-net]
+    ports: ["4004:4004"]
+    environment:
+      - REPLICA_ID=replica4
+      - PORT=4004
+      - PEERS=http://replica1:4001,http://replica2:4002,http://replica3:4003
+      - GATEWAY_URL=http://gateway:3000
+    volumes:
+      - ./replica4:/app
+      - /app/node_modules
+    restart: unless-stopped
+
+  gateway:
+    build: ./gateway
+    container_name: gateway
+    networks: [raft-net]
+    ports: ["3000:3000"]
+    environment:
+      - PORT=3000
+      - REPLICAS=http://replica1:4001,http://replica2:4002,http://replica3:4003,http://replica4:4004
+    volumes:
+      - ./gateway:/app
+      - ./frontend:/app/../frontend
+      - /app/node_modules
+    depends_on: [replica1, replica2, replica3, replica4]
+    restart: unless-stopped
