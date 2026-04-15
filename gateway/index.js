@@ -94,8 +94,8 @@ app.post('/heal/:replicaId', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.use(express.static(path.join(__dirname, '../frontend')));
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, '../frontend/index.html')));
+app.use(express.static(path.join(__dirname, 'frontend')));
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'frontend', 'index.html')));
 
 wss.on('connection', (ws) => {
   clients.add(ws);
@@ -120,6 +120,10 @@ async function forwardToLeader(event) {
   try {
     await axios.post(`${currentLeaderUrl}/stroke`, event, { timeout: 1000 });
   } catch (err) {
+    if (err.response && err.response.status === 500) {
+      log_gw(`Leader reported error (500): ${err.response.data.error || 'No majority'}. Keeping leader.`);
+      return; // Keep the leader, but the event was likely dropped by the cluster
+    }
     log_gw(`Leader unreachable: ${err.message}. Rediscovering...`);
     currentLeaderUrl = null; currentLeaderTerm = -1;
     await discoverLeader();

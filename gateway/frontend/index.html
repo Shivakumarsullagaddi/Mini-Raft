@@ -107,7 +107,7 @@
 
 <script>
 const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
 const colorPicker = document.getElementById('color-picker');
 const brushSize = document.getElementById('brush-size');
 const sizeVal = document.getElementById('size-val');
@@ -123,13 +123,25 @@ const wsStatus = document.getElementById('ws-status');
 
 function resizeCanvas() {
   const wrapper = canvas.parentElement;
-  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  canvas.width = wrapper.clientWidth;
-  canvas.height = wrapper.clientHeight;
-  ctx.putImageData(imgData, 0, 0);
+  if (!wrapper) return;
+  const rect = wrapper.getBoundingClientRect();
+  
+  if (rect.width > 0 && rect.height > 0) {
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+    redrawAll();
+  }
 }
-resizeCanvas();
-window.addEventListener('resize', () => { resizeCanvas(); redrawAll(); });
+requestAnimationFrame(() => {
+  resizeCanvas();
+});
+
+const resizeObserver = new ResizeObserver(() => {
+  resizeCanvas();
+});
+if (canvas.parentElement) {
+  resizeObserver.observe(canvas.parentElement);
+}
 
 // ── Drawing State ──
 let isDrawing = false;
@@ -155,6 +167,7 @@ eraserBtn.addEventListener('click', () => {
 
 dashToggle.addEventListener('click', () => {
   dashboard.classList.toggle('open');
+  // ResizeObserver handles the canvas resize automatically
 });
 
 clearBtn.addEventListener('click', () => {
@@ -195,7 +208,14 @@ function getPos(e) {
   const rect = canvas.getBoundingClientRect();
   const cx = e.touches ? e.touches[0].clientX : e.clientX;
   const cy = e.touches ? e.touches[0].clientY : e.clientY;
-  return [cx - rect.left, cy - rect.top];
+  
+  // Prevent division by zero if canvas is not yet sized
+  if (rect.width === 0 || rect.height === 0) return [cx - rect.left, cy - rect.top];
+
+  // Calculate position relative to canvas display size
+  const x = (cx - rect.left) * (canvas.width / rect.width);
+  const y = (cy - rect.top) * (canvas.height / rect.height);
+  return [x, y];
 }
 
 canvas.addEventListener('mousedown', (e) => {
