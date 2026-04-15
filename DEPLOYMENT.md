@@ -250,7 +250,7 @@ gcloud compute scp --recurse . miniraft-vm:~/miniraft --zone=us-central1-a
 ### Option B: Git clone (if repo is on GitHub)
 ```bash
 # Inside the VM
-git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git miniraft
+git clone https://github.com/Shivakumarsullagaddi/Mini-Raft.git miniraft
 cd miniraft
 ```
 
@@ -326,6 +326,28 @@ docker compose up --build -d
 
 ---
 
+## Troubleshooting
+
+### Error: `EISDIR: illegal operation on a directory, read`
+If you see this in the logs, it means Docker created `state.json` as a folder. To fix:
+```bash
+docker compose down
+rm -rf replica1/state.json replica2/state.json replica3/state.json replica4/state.json
+echo "{}" > replica1/state.json
+echo "{}" > replica2/state.json
+echo "{}" > replica3/state.json
+echo "{}" > replica4/state.json
+docker compose up -d
+```
+
+### Check Logs
+To see what the Raft cluster is doing (elections, syncing, etc.):
+```bash
+docker compose logs -f
+```
+
+---
+
 ## Cost Estimate
 
 | Resource | Type | Monthly Cost |
@@ -349,3 +371,4 @@ docker compose up --build -d
 | `state.json` lost on rebuild | Expected — containers are ephemeral; cluster re-elects leader |
 | High term numbers (100+) | Normal — means elections happened; cluster is healthy |
  means elections happened; cluster is healthy |
+ |
