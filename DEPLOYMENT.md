@@ -372,3 +372,32 @@ docker compose logs -f
 | High term numbers (100+) | Normal — means elections happened; cluster is healthy |
  means elections happened; cluster is healthy |
  |
+\
+---
+
+## ?? Testing Resilience & Failover
+
+Use these commands to manually simulate failures and witness the RAFT self-healing process.
+
+### 1. Simulate a Node Failure (Kill the Leader)
+Find the current leader in the Dashboard or Gateway logs, then stop it:
+\\\ash
+# Replace 'replicaX' with the current leader (e.g., replica1)
+docker stop replica1
+\\\ 
+**What to watch for:** The Dashboard will show a new election, the \	erm\ will increase, and a new leader will take over within 800ms.
+
+### 2. Restart a Node (The 'Heal')
+Bring a stopped replica back into the cluster:
+\\\ash
+# Restart the node you stopped earlier
+docker start replica1
+\\\ 
+**What to watch for:** The restarted node will start in \FOLLOWER\ mode, detect the new leader, and automatically synchronize its log via the \Catch-Up Protocol\.
+
+### 3. Verify Synchronization
+1. Open the board in two browser tabs.
+2. Stop the leader.
+3. Draw in one tab.
+4. Verify the drawing appears in the second tab (Consensus was reached among the remaining majority).
+5. Restart the dead node and verify it now has the latest drawings.\
